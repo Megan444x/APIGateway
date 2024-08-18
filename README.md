@@ -1,1 +1,1 @@
-# APIGateway
+APIGateway serves as the primary entry point for our Rust-based application, focusing on initializing the server and managing the configuration of routes for efficient request handling and response delivery. This repository holds all the essential components for bootstrapping the server, ensuring a seamless interaction through a well-defined set of endpoints.

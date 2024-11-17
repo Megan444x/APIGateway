@@ -1,4 +1,4 @@
-use actix_web::{dev::ServiceRequest, Error, HttpServer, App, web, HttpResponse, middleware};
+use actix_web::{dev::ServiceRequest, Error, HttpServer, App, web, HttpResponse, middleware, http::StatusCode};
 use actix_web_httpauth::extractors::bearer::BearerAuth;
 use std::env;
 use actix_ratelimit::{RateLimiter, MemoryStore, MemoryStoreActor};
@@ -9,25 +9,36 @@ async fn index() -> &'static str {
 }
 
 async fn validate_token(auth: BearerAuth) -> Result<(), Error> {
-    if auth.token() == env::var("SECRET_TOKEN").expect("SECRET_TOKEN must be set") {
-        Ok(())
-    } else {
-        Err(Error::from(HttpResponse::Unauthorized().finish()))
+    match env::var("SECRET_TOKEN") {
+        Ok(token) => {
+            if auth.token() == token {
+                Ok(())
+            } else {
+                Err(Error::from(HttpResponse::Unauthorized().finish()))
+            }
+        },
+        Err(_) => Err(Error::from(HttpResponse::InternalServerError().reason("Internal server error: SECRET_TOKEN missing").finish())),
     }
 }
 
 async fn validator(req: ServiceRequest) -> Result<ServiceRequest, Error> {
-    if let Some(auth) = req.headers().get("Authorization") {
-        let auth_str = auth.to_str().unwrap_or("");
-        if auth_str.starts_with("Bearer") {
-            let auth = BearerAuth::new(auth_str);
-            validate_token(auth).await?;
-            Ok(req)
-        } else {
-            Err(Error::from(HttpResponse::Unauthorized().finish()))
-        }
-    } else {
-        Err(Error::from(HttpResponse::Unauthorized().finish()))
+    let auth_header = req.headers().get("Authorization");
+    match auth_header {
+        Some(auth) => {
+            match auth.to_str() {
+                Ok(auth_str) => {
+                    if auth_str.starts_with("Bearer ") {
+                        let auth = BearerAuth::new(auth_str.trim_start_matches("Bearer "));
+                        validate_token(auth).await?;
+                        Ok(req)
+                    } else {
+                        Err(Error::from(HttpResponse::Unauthorized().finish()))
+                    }
+                },
+                Err(_) => Err(Error::from(HttpResponse::BadRequest().reason("Bad Authorization header").finish()))
+            }
+        },
+        None => Err(Error::from(HttpResponse::Unauthorized().reason("Authorization header missing").finish())),
     }
 }
 
